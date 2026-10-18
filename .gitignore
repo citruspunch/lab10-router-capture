@@ -1,0 +1,99 @@
+# ==========================================
+# QEMU & Virtualization Disks / BIOS Images
+# ==========================================
+*.qcow2
+*.img
+*.iso
+*.fd
+*.raw
+*.vmdk
+*.vdi
+vm/base.qcow2
+vm/overlay.qcow2
+vm/efi-vars.fd
+vm/seed.iso
+
+# ==========================================
+# QEMU Runtime Sockets, PIDs & Logs
+# ==========================================
+*.sock
+*.pid
+*.log
+vm/*.sock
+vm/*.pid
+vm/*.log
+qemu-system-*
+
+# ==========================================
+# SSH Keys & Sensitive Credentials
+# ==========================================
+id_ed25519
+id_ed25519*
+id_rsa
+id_rsa*
+*.pem
+*.key
+*.priv
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# Network Packet Captures & Telemetry Dumps
+# ==========================================
+captures/*
+!captures/.gitkeep
+*.pcap
+*.pcapng
+*.cap
+*.ivs
+*.kismet.csv
+*.kismet.netxml
+
+# ==========================================
+# Python Artifacts & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv/
+venv/
+ENV/
+env/
+
+# ==========================================
+# macOS System Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# IDEs & Text Editors
+# ==========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

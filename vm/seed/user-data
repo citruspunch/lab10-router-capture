@@ -1,0 +1,21 @@
+#cloud-config
+users:
+  - name: debian
+    gecos: Debian User
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE5cCTDe1/caQNpIBqv7ZOdDg/mcoMe1GcaY6DmDSpEv lab10-debian-vm
+chpasswd:
+  list: |
+    debian:debian
+  expire: false
+ssh_pwauth: true
+package_update: false
+bootcmd:
+  - mkdir -p /mnt/host
+runcmd:
+  - modprobe 9pnet_virtio 2>/dev/null || true
+  - mount -t 9p -o trans=virtio,version=9p2000.L hostshare /mnt/host 2>/dev/null || true
+  - echo "hostshare /mnt/host 9p trans=virtio,version=9p2000.L,_netdev 0 0" >> /etc/fstab
