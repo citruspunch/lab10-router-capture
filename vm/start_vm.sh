@@ -66,13 +66,14 @@ fi
 # 5. Launch QEMU with new session (setsid) to prevent macOS SIGHUP termination
 python3 -c '
 import sys, subprocess
-cmd = sys.argv[1:]
-with open(sys.argv[1], "a"): pass
-with open("vm/qemu.log", "a") as logfile:
+pid_file = sys.argv[1]
+log_file = sys.argv[2]
+cmd = sys.argv[3:]
+with open(log_file, "a") as logfile:
     p = subprocess.Popen(cmd, stdout=logfile, stderr=subprocess.STDOUT, start_new_session=True)
-    with open("vm/qemu.pid", "w") as pidfile:
+    with open(pid_file, "w") as pidfile:
         pidfile.write(str(p.pid))
-' qemu-system-aarch64 \
+' "$PID_FILE" "$VM_DIR/qemu.log" qemu-system-aarch64 \
     -machine virt,accel=hvf \
     -cpu host -smp 2 -m 1536 \
     -drive if=pflash,format=raw,readonly=on,file="$EDK2_CODE" \

